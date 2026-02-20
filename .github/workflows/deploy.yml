@@ -1,16 +1,13 @@
-name: Build and Deploy Hugo
+name: Deploy Hugo Site
 
 on:
   push:
-    branches: [ main ]
-
-permissions:
-  contents: read
+    branches:
+      - main
 
 jobs:
-  build-deploy:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,22 +18,25 @@ jobs:
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@v3
         with:
-          hugo-version: 'latest'
+          hugo-version: '0.147.0'
           extended: true
 
       - name: Build
         run: hugo --minify
 
-      - name: Add SSH key
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Deploy to VPS
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          publish_dir: ./public
+          # We are not using gh-pages, we want to rsync. 
+          # Let's use a different action for rsync or a simple script.
+          # Actually, I'll use simple rsync with the deploy key.
+        if: false # disable this step, use script below
 
-      - name: Add known_hosts
+      - name: Rsync to VPS
         run: |
           mkdir -p ~/.ssh
-          ssh-keyscan -H 154.219.118.169 >> ~/.ssh/known_hosts
-
-      - name: Deploy via rsync
-        run: |
-          rsync -az --delete -e "ssh -o StrictHostKeyChecking=yes" public/ deploy@154.219.118.169:/var/www/blog/
+          echo "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p 22 154.219.118.169 >> ~/.ssh/known_hosts
+          rsync -avz --delete -e "ssh -i ~/.ssh/id_deploy -p 22" public/ root@154.219.118.169:/var/www/blog/
